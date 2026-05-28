@@ -1,6 +1,7 @@
+// app/api/admin/orders/[id]/route.ts
 import pool from "@/lib/db";
 import { NextResponse } from "next/server";
-import { RowDataPacket, FieldPacket } from "mysql2";
+import { RowDataPacket, FieldPacket, ResultSetHeader } from "mysql2";
 
 type OrderDetailRow = RowDataPacket & {
   id: string;
@@ -35,6 +36,10 @@ type OrderItemRow = RowDataPacket & {
   quantity: number;
   priceAtTime: number;
   productImageUrl: string | null;
+};
+
+type CurrentStatusRow = RowDataPacket & {
+  orderStatus: string;
 };
 
 export async function GET(
@@ -87,7 +92,19 @@ export async function PUT(
   const body = await request.json();
   const { orderStatus, paymentStatus, rejectionReason } = body;
 
+  const connection = await pool.getConnection();
+  await connection.beginTransaction();
+
   try {
+    // Dapatkan status order saat ini (sebelum update)
+    const [currentRows]: [CurrentStatusRow[], FieldPacket[]] = await connection.execute<CurrentStatusRow[]>(
+      `SELECT orderStatus FROM \`Order\` WHERE id = ? FOR UPDATE`,
+      [id]
+    );
+    
+    const currentStatus = currentRows[0]?.orderStatus;
+
+    // Build update query
     let query = "UPDATE `Order` SET updatedAt = NOW()";
     const updateParams: (string | number | null)[] = [];
 
@@ -116,10 +133,32 @@ export async function PUT(
     query += " WHERE id = ?";
     updateParams.push(id);
 
-    await pool.execute(query, updateParams);
+    await connection.execute<ResultSetHeader>(query, updateParams);
+
+    // Jika status berubah menjadi REJECTED, kembalikan stok
+    if (orderStatus === "REJECTED" && currentStatus !== "REJECTED" && currentStatus !== "COMPLETED") {
+      // Ambil semua order items
+      const [orderItems]: [OrderItemRow[], FieldPacket[]] = await connection.execute<OrderItemRow[]>(
+        `SELECT productId, quantity FROM OrderItem WHERE orderId = ?`,
+        [id]
+      );
+      
+      // Kembalikan stok untuk setiap item
+      for (const item of orderItems) {
+        await connection.execute<ResultSetHeader>(
+          `UPDATE Product SET stock = stock + ? WHERE id = ?`,
+          [item.quantity, item.productId]
+        );
+      }
+    }
+
+    await connection.commit();
+    connection.release();
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    await connection.rollback();
+    connection.release();
     console.error("Error updating order:", error);
     return NextResponse.json({ error: "Gagal update pesanan" }, { status: 500 });
   }

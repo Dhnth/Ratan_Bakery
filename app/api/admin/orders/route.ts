@@ -21,6 +21,10 @@ export async function GET(request: Request) {
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
 
+  // 1. Ambil parameter sort dari query URL
+  const sortBy = searchParams.get("sortBy") || "createdAt";
+  const sortOrder = searchParams.get("sortOrder") || "DESC";
+
   try {
     let query = `
       SELECT o.id, o.orderNumber, o.totalAmount, o.orderStatus, o.paymentStatus,
@@ -42,14 +46,34 @@ export async function GET(request: Request) {
       params.push(status);
     }
 
-    query += ` ORDER BY o.createdAt DESC LIMIT 50`;
+    // 2. Validasi Kolom dan Arah Sort (Penting untuk mencegah SQL Injection!)
+    const allowedColumns: Record<string, string> = {
+      createdAt: "o.createdAt",
+      totalAmount: "o.totalAmount",
+      pickupDate: "o.pickupDate",
+    };
 
-    const [rows]: [OrderRow[], FieldPacket[]] = await pool.execute<OrderRow[]>(query, params);
+    // Tentukan kolom SQL berdasarkan parameter sortBy, fallback ke o.createdAt jika tidak valid
+    const orderColumn = allowedColumns[sortBy] || "o.createdAt";
+
+    // Pastikan order direction hanya ASC atau DESC (case-insensitive)
+    const orderDirection = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
+
+    // 3. Masukkan ke dalam Query secara dinamis
+    query += ` ORDER BY ${orderColumn} ${orderDirection} LIMIT 50`;
+
+    const [rows]: [OrderRow[], FieldPacket[]] = await pool.execute<OrderRow[]>(
+      query,
+      params,
+    );
 
     return NextResponse.json(rows);
   } catch (error) {
     console.error("Error fetching orders:", error);
-    return NextResponse.json({ error: "Gagal mengambil data pesanan" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Gagal mengambil data pesanan" },
+      { status: 500 },
+    );
   }
 }
 
@@ -60,7 +84,10 @@ export async function PUT(request: Request) {
     const { id, orderStatus, paymentStatus } = body;
 
     if (!id) {
-      return NextResponse.json({ error: "ID pesanan wajib diisi" }, { status: 400 });
+      return NextResponse.json(
+        { error: "ID pesanan wajib diisi" },
+        { status: 400 },
+      );
     }
 
     let query = "UPDATE `Order` SET updatedAt = NOW()";
@@ -86,6 +113,9 @@ export async function PUT(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error updating order:", error);
-    return NextResponse.json({ error: "Gagal update pesanan" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Gagal update pesanan" },
+      { status: 500 },
+    );
   }
 }

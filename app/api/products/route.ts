@@ -10,20 +10,23 @@ export async function GET(request: Request) {
     const values: string[] = [];
 
     if (type === "daily") {
+      // Ambil semua produk dengan category = 'daily' dan isActive = 1
       query = `
         SELECT * FROM Product 
         WHERE isActive = 1 
-        AND name IN ('Roti Coklat', 'Roti Kopi', 'Pizza Mini', 'Pisang Coklat', 'Keju Kepang')
+        AND category = 'daily'
         ORDER BY createdAt ASC
       `;
     } else if (type === "special") {
+      // Ambil semua produk dengan category = 'special' dan isActive = 1
       query = `
         SELECT * FROM Product 
         WHERE isActive = 1 
-        AND name IN ('Berry Cheese', 'Roti John', 'Roti Tawar')
+        AND category = 'special'
         ORDER BY price ASC
       `;
     } else {
+      // Ambil semua produk aktif
       query = `
         SELECT * FROM Product 
         WHERE isActive = 1 

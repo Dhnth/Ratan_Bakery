@@ -41,3 +41,44 @@ body {
 body {
   -ms-overflow-style: none;
 }
+
+/* Leaflet Routing Machine Styles */
+.leaflet-routing-container {
+  background-color: white;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  margin: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.leaflet-routing-container h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #823b18;
+  margin-bottom: 0.5rem;
+}
+
+.leaflet-routing-container .leaflet-routing-alt {
+  background-color: transparent;
+}
+
+.leaflet-routing-container .leaflet-routing-alt tr td {
+  padding: 0.25rem 0;
+  font-size: 0.7rem;
+  color: #54433c;
+}
+
+.leaflet-routing-container .leaflet-routing-alt tr td:first-child {
+  font-weight: 500;
+}
+
+.leaflet-routing-container .leaflet-routing-alt-minimized {
+  background-color: white;
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+}

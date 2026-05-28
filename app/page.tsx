@@ -84,10 +84,10 @@ const itemVariants: Variants = {
 
 // Menu items untuk navbar
 const menuItems = [
-  { name: "Beranda", href: "#home", icon: House },
-  { name: "Roti Harian", href: "#daily", icon: Wheat },
-  { name: "Spesial Order", href: "#special", icon: Star },
-  { name: "Lokasi", href: "#location", icon: MapPin },
+  { name: "Beranda", href: "#home" },
+  { name: "Roti Harian", href: "#daily" },
+  { name: "Spesial Order", href: "#special" },
+  { name: "Lokasi", href: "#location" },
 ];
 
 export default function Home() {
@@ -222,20 +222,12 @@ export default function Home() {
             {menuItems.map((item) => {
               const sectionId = item.href.substring(1);
               const isActive = activeSection === sectionId;
-              const Icon = item.icon;
               return (
                 <button
                   key={item.name}
                   onClick={() => scrollToSection(sectionId)}
                   className="relative group cursor-pointer flex items-center gap-1.5"
                 >
-                  <Icon
-                    className={`w-4 h-4 transition-colors ${
-                      isActive
-                        ? "text-[#823b18]"
-                        : "text-[#54433c] group-hover:text-[#823b18]"
-                    }`}
-                  />
                   <span
                     className={`text-sm font-semibold transition-colors ${
                       isActive
@@ -324,7 +316,6 @@ export default function Home() {
                 {menuItems.map((item) => {
                   const sectionId = item.href.substring(1);
                   const isActive = activeSection === sectionId;
-                  const Icon = item.icon;
                   return (
                     <motion.button
                       key={item.name}
@@ -339,7 +330,6 @@ export default function Home() {
                           : "text-[#54433c] hover:text-[#823b18]"
                       }`}
                     >
-                      <Icon className="w-5 h-5" />
                       {item.name}
                     </motion.button>
                   );

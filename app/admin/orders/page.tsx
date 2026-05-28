@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
@@ -12,9 +12,12 @@ import {
   Eye,
   Package,
   Download,
-  Plus,
   X,
   Calendar,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Loader2,
 } from "lucide-react";
 
 // Tipe data order
@@ -54,6 +57,16 @@ const statusBadgeColors: Record<string, string> = {
   COMPLETED: "bg-green-100 text-green-700",
 };
 
+// Sorting options
+const sortOptions = [
+  { id: "newest", name: "Terbaru", field: "createdAt", order: "DESC" },
+  { id: "oldest", name: "Terlama", field: "createdAt", order: "ASC" },
+  { id: "total_high", name: "Total Tertinggi", field: "totalAmount", order: "DESC" },
+  { id: "total_low", name: "Total Terendah", field: "totalAmount", order: "ASC" },
+  { id: "pickup_soon", name: "Pickup Terdekat", field: "pickupDate", order: "ASC" },
+  { id: "pickup_late", name: "Pickup Terjauh", field: "pickupDate", order: "DESC" },
+];
+
 const showToast = (message: string, type: "success" | "error" = "success") => {
   const toast = document.createElement("div");
   toast.className = `fixed top-20 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border ${
@@ -80,52 +93,101 @@ const showToast = (message: string, type: "success" | "error" = "success") => {
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [selectedSort, setSelectedSort] = useState("newest");
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
 
-  // Debounce search
+  // Fungsi konversi UTC ke WIB (UTC+7)
+  const convertUTCToWIB = (utcDateStr: string): Date => {
+    const date = new Date(utcDateStr);
+    // Tambah 7 jam untuk WIB
+    return new Date(date.getTime() + (7 * 60 * 60 * 1000));
+  };
+
+  // Format tanggal dan waktu WIB lengkap
+  const formatDateTimeWIB = (dateStr: string) => {
+    if (!dateStr) return '-';
+    const wibDate = convertUTCToWIB(dateStr);
+    return wibDate.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // Format tanggal pickup (sudah dalam WIB dari database, tidak perlu konversi)
+  const formatPickupDate = (dateStr: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  // Format waktu pickup (jam saja)
+  const formatPickupTime = (dateStr: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // Fetch orders with useCallback
+  const fetchOrders = useCallback(async () => {
+    setIsFetching(true);
+    try {
+      const sortOption = sortOptions.find(opt => opt.id === selectedSort);
+      const params = new URLSearchParams();
+      
+      if (searchTerm) {
+        params.append("search", searchTerm);
+      }
+      if (selectedStatus !== "all") {
+        params.append("status", selectedStatus);
+      }
+      params.append("sortBy", sortOption?.field || "createdAt");
+      params.append("sortOrder", sortOption?.order || "DESC");
+      
+      const url = `/api/admin/orders?${params.toString()}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      
+      if (res.ok) {
+        setOrders(data);
+        setCurrentPage(1);
+      } else {
+        console.error("Failed to fetch orders:", data);
+        showToast("Gagal memuat data pesanan", "error");
+      }
+    } catch (err) {
+      console.error("Error fetching orders:", err);
+      showToast("Gagal memuat data pesanan", "error");
+    } finally {
+      setIsFetching(false);
+      setIsLoading(false);
+    }
+  }, [searchTerm, selectedStatus, selectedSort]);
+
+  // Debounce search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-      setCurrentPage(1);
-    }, 300);
+      fetchOrders();
+    }, 500);
     return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  // Fetch orders
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadOrders = async () => {
-      try {
-        const res = await fetch(
-          `/api/admin/orders?search=${encodeURIComponent(debouncedSearch)}&status=${selectedStatus}`
-        );
-        const data = await res.json();
-        if (res.ok && isMounted) {
-          setOrders(data);
-        }
-      } catch (err) {
-        console.error("Error fetching orders:", err);
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadOrders();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [debouncedSearch, selectedStatus]);
+  }, [fetchOrders]);
 
   const totalPages = Math.ceil(orders.length / itemsPerPage);
   const paginatedOrders = orders.slice(
@@ -139,15 +201,6 @@ export default function OrdersPage() {
       currency: "IDR",
       minimumFractionDigits: 0,
     }).format(amount);
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("id-ID", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
   };
 
   const getStatusLabel = (status: string): string => {
@@ -174,9 +227,24 @@ export default function OrdersPage() {
       setShowExportModal(false);
       setStartDate("");
       setEndDate("");
-    } catch (error) {
+    } catch (err) {
+      console.error("Export error:", err);
       showToast("Gagal export data", "error");
     }
+  };
+
+  const getCurrentSortLabel = () => {
+    return sortOptions.find(opt => opt.id === selectedSort)?.name || "Terbaru";
+  };
+
+  const handleSortChange = (sortId: string) => {
+    setSelectedSort(sortId);
+    setShowSortDropdown(false);
+  };
+
+  const handleStatusChange = (statusId: string) => {
+    setSelectedStatus(statusId);
+    setCurrentPage(1);
   };
 
   if (isLoading) {
@@ -205,10 +273,6 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-[#c8f17a] text-[#131f00] rounded-lg text-sm font-semibold hover:opacity-90 transition-all cursor-pointer">
-            <Plus className="w-4 h-4" />
-            Pesanan Baru
-          </button>
           <button
             onClick={() => setShowExportModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-[#fbddc7] text-[#54433c] rounded-lg text-sm font-semibold hover:bg-[#ffe3cf] transition-all cursor-pointer"
@@ -219,16 +283,62 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#87736b]" />
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Cari pesanan, pelanggan, atau nomor telepon..."
-          className="w-full bg-white border border-[#dac1b8] rounded-xl pl-10 pr-4 py-2.5 text-sm text-[#28180b] placeholder:text-[#87736b] focus:border-[#823b18] focus:ring-1 focus:ring-[#823b18] outline-none transition-all"
-        />
+      {/* Search Bar & Sorting */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#87736b]" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Cari pesanan, pelanggan, atau nomor telepon..."
+            className="w-full bg-white border border-[#dac1b8] rounded-xl pl-10 pr-10 py-2.5 text-sm text-[#28180b] placeholder:text-[#87736b] focus:border-[#823b18] focus:ring-1 focus:ring-[#823b18] outline-none transition-all"
+          />
+          {isFetching && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#823b18] animate-spin" />
+          )}
+        </div>
+
+        {/* Sort Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setShowSortDropdown(!showSortDropdown)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-[#dac1b8] rounded-xl text-sm text-[#28180b] hover:border-[#823b18] transition-all cursor-pointer"
+          >
+            <ArrowUpDown className="w-4 h-4 text-[#823b18]" />
+            <span>Urutkan: {getCurrentSortLabel()}</span>
+          </button>
+
+          <AnimatePresence>
+            {showSortDropdown && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-[#dac1b8]/20 overflow-hidden z-50"
+              >
+                {sortOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => handleSortChange(option.id)}
+                    className={`w-full flex items-center justify-between px-4 py-2.5 text-sm text-left hover:bg-[#fff1e9] transition-colors cursor-pointer ${
+                      selectedSort === option.id ? "bg-[#fff1e9] text-[#823b18] font-semibold" : "text-[#54433c]"
+                    }`}
+                  >
+                    {option.name}
+                    {selectedSort === option.id && (
+                      option.order === "DESC" ? (
+                        <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUp className="w-4 h-4" />
+                      )
+                    )}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* Status Filters */}
@@ -236,10 +346,7 @@ export default function OrdersPage() {
         {statusFilters.map((filter) => (
           <button
             key={filter.id}
-            onClick={() => {
-              setSelectedStatus(filter.id);
-              setCurrentPage(1);
-            }}
+            onClick={() => handleStatusChange(filter.id)}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
               selectedStatus === filter.id
                 ? filter.color
@@ -253,92 +360,136 @@ export default function OrdersPage() {
 
       {/* Orders List */}
       <div className="space-y-4">
-        {paginatedOrders.length === 0 ? (
+        {isFetching && orders.length === 0 ? (
+          <div className="bg-white rounded-xl p-12 text-center border border-[#dac1b8]/10">
+            <Loader2 className="w-12 h-12 text-[#823b18] mx-auto mb-4 animate-spin" />
+            <p className="text-[#54433c]">Memuat pesanan...</p>
+          </div>
+        ) : paginatedOrders.length === 0 ? (
           <div className="bg-white rounded-xl p-12 text-center border border-[#dac1b8]/10">
             <Package className="w-16 h-16 text-[#dac1b8] mx-auto mb-4" />
-            <p className="text-[#54433c]">Belum ada pesanan</p>
+            <p className="text-[#54433c]">Tidak ada pesanan yang ditemukan</p>
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="mt-3 text-[#823b18] text-sm hover:underline"
+              >
+                Hapus pencarian
+              </button>
+            )}
           </div>
         ) : (
-          paginatedOrders.map((order, idx) => {
-            const badgeColor = statusBadgeColors[order.orderStatus] || "bg-gray-100 text-gray-600";
+          <>
+            {/* Result info */}
+            <div className="flex justify-between items-center text-xs text-[#54433c]">
+              <span>
+                Menampilkan {orders.length} pesanan
+                {searchTerm && ` untuk "${searchTerm}"`}
+                {selectedStatus !== "all" && ` • Status: ${statusFilters.find(f => f.id === selectedStatus)?.name}`}
+              </span>
+              {isFetching && (
+                <span className="flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Memperbarui...
+                </span>
+              )}
+            </div>
 
-            return (
-              <motion.div
-                key={order.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.05 }}
-                className="bg-white rounded-xl p-5 shadow-sm border border-[#dac1b8]/10 hover:border-[#823b18]/20 transition-all group"
-              >
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  {/* Left Section */}
-                  <div className="flex items-start gap-4 flex-1">
-                    <div className="w-14 h-14 rounded-lg bg-[#ffeadc] overflow-hidden flex-shrink-0 flex items-center justify-center">
-                      <Package className="w-7 h-7 text-[#823b18]" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex flex-wrap items-center gap-3 mb-2">
-                        <span className="font-serif text-xl font-semibold text-[#823b18]">
-                          {order.orderNumber}
-                        </span>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${badgeColor}`}>
-                          {getStatusLabel(order.orderStatus)}
-                        </span>
+            {paginatedOrders.map((order, idx) => {
+              const badgeColor = statusBadgeColors[order.orderStatus] || "bg-gray-100 text-gray-600";
+
+              return (
+                <motion.div
+                  key={order.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className="bg-white rounded-xl p-5 shadow-sm border border-[#dac1b8]/10 hover:border-[#823b18]/20 transition-all group"
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    {/* Left Section */}
+                    <div className="flex items-start gap-4 flex-1">
+                      <div className="w-14 h-14 rounded-lg bg-[#ffeadc] overflow-hidden shrink-0 flex items-center justify-center">
+                        <Package className="w-7 h-7 text-[#823b18]" />
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        <div>
-                          <p className="text-[10px] uppercase text-[#54433c]/60 font-bold tracking-wider mb-0.5">
-                            Tgl. Ambil
-                          </p>
-                          <p className="text-sm font-medium text-[#28180b]">
-                            {formatDate(order.pickupDate)}
-                          </p>
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-3 mb-2">
+                          <span className="font-serif text-xl font-semibold text-[#823b18]">
+                            {order.orderNumber}
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${badgeColor}`}>
+                            {getStatusLabel(order.orderStatus)}
+                          </span>
                         </div>
-                        <div>
-                          <p className="text-[10px] uppercase text-[#54433c]/60 font-bold tracking-wider mb-0.5">
-                            Metode
-                          </p>
-                          <p className="text-sm font-medium text-[#28180b] flex items-center gap-1">
-                            {order.deliveryMethod === "PICKUP" ? (
-                              <ShoppingBag className="w-3.5 h-3.5" />
-                            ) : (
-                              <Truck className="w-3.5 h-3.5" />
-                            )}
-                            {order.deliveryMethod === "PICKUP" ? "Ambil Sendiri" : "Diantar"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] uppercase text-[#54433c]/60 font-bold tracking-wider mb-0.5">
-                            Total
-                          </p>
-                          <p className="text-sm font-bold text-[#823b18]">
-                            {formatRupiah(order.totalAmount)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] uppercase text-[#54433c]/60 font-bold tracking-wider mb-0.5">
-                            Pelanggan
-                          </p>
-                          <p className="text-sm font-medium text-[#28180b] truncate">
-                            {order.customerName}
-                          </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                          <div>
+                            <p className="text-[10px] uppercase text-[#54433c]/60 font-bold tracking-wider mb-0.5">
+                              Tgl. Pesan (WIB)
+                            </p>
+                            <p className="text-sm font-medium text-[#28180b]">
+                              {formatDateTimeWIB(order.createdAt)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-[#54433c]/60 font-bold tracking-wider mb-0.5">
+                              Tgl. Ambil
+                            </p>
+                            <p className="text-sm font-medium text-[#28180b]">
+                              {formatPickupDate(order.pickupDate)}
+                            </p>
+                            <p className="text-xs text-[#54433c]/60">
+                              {formatPickupTime(order.pickupDate)} WIB
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-[#54433c]/60 font-bold tracking-wider mb-0.5">
+                              Metode
+                            </p>
+                            <p className="text-sm font-medium text-[#28180b] flex items-center gap-1">
+                              {order.deliveryMethod === "PICKUP" ? (
+                                <ShoppingBag className="w-3.5 h-3.5" />
+                              ) : (
+                                <Truck className="w-3.5 h-3.5" />
+                              )}
+                              {order.deliveryMethod === "PICKUP" ? "Ambil Sendiri" : "Diantar"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-[#54433c]/60 font-bold tracking-wider mb-0.5">
+                              Total
+                            </p>
+                            <p className="text-sm font-bold text-[#823b18]">
+                              {formatRupiah(order.totalAmount)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-[#54433c]/60 font-bold tracking-wider mb-0.5">
+                              Pelanggan
+                            </p>
+                            <p className="text-sm font-medium text-[#28180b] truncate">
+                              {order.customerName}
+                            </p>
+                            <p className="text-xs text-[#54433c]/60">
+                              {order.customerPhone}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
+
+                    {/* Action Buttons */}
+                    <Link
+                      href={`/admin/orders/${order.id}`}
+                      className="flex items-center justify-center gap-1.5 px-5 py-2 rounded-lg text-sm font-semibold bg-[#823b18] text-white hover:bg-[#a0522d] transition-all cursor-pointer"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Detail
+                    </Link>
                   </div>
-
-                  {/* Action Buttons */}
-                  <Link
-                    href={`/admin/orders/${order.id}`}
-                    className="flex items-center justify-center gap-1.5 px-5 py-2 rounded-lg text-sm font-semibold bg-[#823b18] text-white hover:bg-[#a0522d] transition-all cursor-pointer"
-                  >
-                    <Eye className="w-4 h-4" />
-                    Detail
-                  </Link>
-                </div>
-              </motion.div>
-            );
-          })
+                </motion.div>
+              );
+            })}
+          </>
         )}
       </div>
 
@@ -346,8 +497,9 @@ export default function OrdersPage() {
       {totalPages > 1 && (
         <div className="bg-[#fff1e9] p-4 flex flex-col sm:flex-row items-center justify-between gap-4 rounded-xl">
           <span className="text-xs text-[#54433c]">
-            Menampilkan {((currentPage - 1) * itemsPerPage) + 1} -{" "}
-            {Math.min(currentPage * itemsPerPage, orders.length)} dari {orders.length} pesanan
+            Menampilkan {(currentPage - 1) * itemsPerPage + 1} -{" "}
+            {Math.min(currentPage * itemsPerPage, orders.length)} dari{" "}
+            {orders.length} pesanan
           </span>
           <div className="flex items-center gap-1">
             <button
