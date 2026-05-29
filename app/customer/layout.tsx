@@ -17,19 +17,11 @@ import {
   AlertTriangle,
   LogOut as LogOutIcon,
   Notebook,
+  ArrowLeft,
 } from "lucide-react";
 
 type LayoutProps = {
   children: React.ReactNode;
-};
-
-type SessionUser = {
-  user?: {
-    name?: string | null;
-    email?: string | null;
-    id?: string;
-    role?: string;
-  };
 };
 
 type MobileMenuOverlayProps = {
@@ -45,9 +37,18 @@ type LogoutModalProps = {
   userName: string;
 };
 
+type UserData = {
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  avatar: string | null;
+};
+
 // Konfigurasi halaman yang membutuhkan navbar khusus
 const CHECKOUT_PATH = "/customer/checkout";
 const ORDER_DETAIL_PATTERN = /^\/customer\/orders\/[^\/]+$/;
+const SETTINGS_PATH = "/customer/settings";
 
 // Animation variants
 const underlineVariants = {
@@ -55,10 +56,7 @@ const underlineVariants = {
   visible: { width: "100%", opacity: 1 },
 };
 
-// Mobile Menu Overlay Component (dropdown dari atas)
-// app/customer/layout.tsx - Hanya bagian MobileMenuOverlay yang diubah
-
-// Mobile Menu Overlay Component (dropdown dari atas dengan style lebih bagus)
+// Mobile Menu Overlay Component
 const MobileMenuOverlay = ({
   isOpen,
   onClose,
@@ -68,7 +66,6 @@ const MobileMenuOverlay = ({
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop overlay - gelap di belakang menu */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -77,7 +74,6 @@ const MobileMenuOverlay = ({
             className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden"
           />
           
-          {/* Menu slide from top */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -97,7 +93,6 @@ const MobileMenuOverlay = ({
               overflow-hidden
             "
           >
-            {/* Header dengan icon user */}
             <div className="px-5 py-4 bg-linear-to-r from-[#ffdbcd]/20 to-transparent border-b border-[#dac1b8]/10">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-linear-to-br from-[#823b18] to-[#a0522d] flex items-center justify-center text-white shadow-sm">
@@ -110,7 +105,6 @@ const MobileMenuOverlay = ({
               </div>
             </div>
             
-            {/* Menu Items dengan animasi hover yang lebih baik */}
             <div className="p-3 space-y-1">
               <Link
                 href="/customer"
@@ -152,9 +146,28 @@ const MobileMenuOverlay = ({
                   />
                 )}
               </Link>
+              <Link
+                href="/customer/settings"
+                onClick={onClose}
+                className={`
+                  flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer
+                  ${pathname === "/customer/settings"
+                    ? "bg-[#823b18]/10 text-[#823b18] font-semibold"
+                    : "text-[#54433c] hover:bg-[#fff1e9] hover:translate-x-1"
+                  }
+                `}
+              >
+                <Settings className="w-5 h-5" />
+                <span>Pengaturan</span>
+                {pathname === "/customer/settings" && (
+                  <motion.div
+                    layoutId="activeIndicator"
+                    className="ml-auto w-1.5 h-1.5 rounded-full bg-[#823b18]"
+                  />
+                )}
+              </Link>
             </div>
             
-            {/* Footer dengan tombol tutup */}
             <div className="p-3 border-t border-[#dac1b8]/10 bg-[#fff8f5]">
               <button
                 onClick={onClose}
@@ -242,10 +255,32 @@ export default function CustomerLayout({ children }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [userData, setUserData] = useState<UserData | null>(null);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
   const isCheckoutPage = pathname === CHECKOUT_PATH;
   const isOrderDetailPage = ORDER_DETAIL_PATTERN.test(pathname || "");
+  const isSettingsPage = pathname === SETTINGS_PATH;
+  const needsBackButton = isCheckoutPage || isOrderDetailPage || isSettingsPage;
+
+  // Ambil data user dari database (termasuk avatar)
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!session?.user?.id) return;
+      
+      try {
+        const res = await fetch("/api/user/profile");
+        if (res.ok) {
+          const data = await res.json();
+          setUserData(data);
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+      }
+    };
+
+    fetchUserData();
+  }, [session?.user?.id]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -294,11 +329,29 @@ export default function CustomerLayout({ children }: LayoutProps) {
 
   if (!session) return null;
 
-  // Navbar untuk halaman checkout dan order detail (dengan tombol back)
-  if (isCheckoutPage || isOrderDetailPage) {
+  // Nama dan avatar dari database
+  const displayName = userData?.name || session?.user?.name || "";
+  const displayEmail = userData?.email || session?.user?.email || "";
+  const avatarUrl = userData?.avatar || null;
+  
+  // Avatar fallback: gunakan UI Avatars jika belum upload gambar
+  const getAvatarUrl = () => {
+    if (avatarUrl) return avatarUrl;
+    const name = displayName || "User";
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=823b18&color=fff&bold=true&length=2`;
+  };
+
+  const getBackUrl = () => {
+    if (isCheckoutPage) return "/customer";
+    if (isOrderDetailPage) return "/customer/orders";
+    if (isSettingsPage) return "/customer";
+    return "/customer";
+  };
+
+  // Navbar dengan tombol back
+  if (needsBackButton) {
     return (
       <div className="min-h-screen bg-[#fff8f5] relative">
-        {/* Background Pattern */}
         <div className="fixed inset-0 pointer-events-none z-0">
           <div
             className="absolute inset-0 opacity-30"
@@ -310,35 +363,20 @@ export default function CustomerLayout({ children }: LayoutProps) {
           />
         </div>
 
-        {/* Checkout/Order Detail Navbar */}
         <nav className="bg-[#fff8f5]/90 backdrop-blur-md sticky top-0 z-50 border-b border-[#dac1b8]/30 shadow-sm">
           <div className="px-4 md:px-6 py-4 flex justify-between items-center">
-            {/* Kiri: Tombol Back */}
             <Link
-              href={isCheckoutPage ? "/customer" : "/customer/orders"}
+              href={getBackUrl()}
               className="flex items-center gap-2 p-2 -ml-2 rounded-lg hover:bg-[#823b18]/10 transition-all cursor-pointer group"
             >
               <motion.div whileHover={{ x: -4 }} transition={{ duration: 0.2 }}>
-                <svg
-                  className="w-5 h-5 text-[#823b18]"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                  />
-                </svg>
+                <ArrowLeft className="w-5 h-5 text-[#823b18]" />
               </motion.div>
               <span className="hidden sm:inline text-sm text-[#54433c] group-hover:text-[#823b18] transition-colors">
                 Kembali
               </span>
             </Link>
 
-            {/* Tengah: Logo */}
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-[#823b18] flex items-center justify-center">
                 <Coffee className="w-4 h-4 text-white" />
@@ -351,9 +389,7 @@ export default function CustomerLayout({ children }: LayoutProps) {
               </Link>
             </div>
 
-            {/* Kanan: Profile Dropdown */}
             <div className="flex items-center gap-3">
-              {/* Tombol Menu untuk mobile */}
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="lg:hidden p-2 hover:bg-[#823b18]/10 rounded-full transition-all text-[#823b18] cursor-pointer"
@@ -365,16 +401,18 @@ export default function CustomerLayout({ children }: LayoutProps) {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() =>
-                    setIsProfileDropdownOpen(!isProfileDropdownOpen)
-                  }
+                  onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
                   className="flex items-center gap-2 p-2 hover:bg-[#823b18]/10 rounded-full transition-all cursor-pointer"
                 >
-                  <div className="w-8 h-8 rounded-full bg-linear-to-br from-[#823b18] to-[#a0522d] flex items-center justify-center text-white shadow-sm">
-                    <User className="w-4 h-4" />
+                  <div className="w-8 h-8 rounded-full bg-linear-to-br from-[#823b18] to-[#a0522d] flex items-center justify-center text-white shadow-sm overflow-hidden">
+                    <img
+                      src={getAvatarUrl()}
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <span className="hidden md:inline text-sm text-[#54433c]">
-                    {session?.user?.name}
+                    {displayName}
                   </span>
                   <motion.div
                     animate={{ rotate: isProfileDropdownOpen ? 180 : 0 }}
@@ -394,7 +432,7 @@ export default function CustomerLayout({ children }: LayoutProps) {
                       className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-[#dac1b8]/20 overflow-hidden z-50"
                     >
                       <Link
-                        href="/customer/profile"
+                        href="/customer/settings"
                         onClick={() => setIsProfileDropdownOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 text-sm text-[#54433c] hover:bg-[#fff1e9] transition-colors cursor-pointer"
                       >
@@ -419,7 +457,6 @@ export default function CustomerLayout({ children }: LayoutProps) {
           </div>
         </nav>
 
-        {/* Mobile Menu - Dropdown dari atas */}
         <MobileMenuOverlay
           isOpen={isMobileMenuOpen}
           onClose={() => setIsMobileMenuOpen(false)}
@@ -428,21 +465,19 @@ export default function CustomerLayout({ children }: LayoutProps) {
 
         {children}
 
-        {/* Modal Konfirmasi Logout */}
         <LogoutModal
           isOpen={showLogoutModal}
           onClose={() => setShowLogoutModal(false)}
           onConfirm={handleLogout}
-          userName={session?.user?.name || ""}
+          userName={displayName}
         />
       </div>
     );
   }
 
-  // Navbar untuk halaman customer biasa (dengan produk & pesanan)
+  // Navbar untuk halaman customer biasa
   return (
     <div className="min-h-screen bg-[#fff8f5] relative">
-      {/* Background Pattern */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div
           className="absolute inset-0 opacity-30"
@@ -454,18 +489,16 @@ export default function CustomerLayout({ children }: LayoutProps) {
         />
       </div>
 
-      {/* Main Navbar */}
       <nav className="bg-[#fff8f5]/90 backdrop-blur-md sticky top-0 z-50 border-b border-[#dac1b8]/30 shadow-sm">
         <div className="px-4 md:px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            {/* Tombol Menu untuk mobile */}
-            <motion.button
-              whileTap={{ scale: 0.95 }}
+            <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="lg:hidden p-2 hover:bg-[#823b18]/10 rounded-full transition-all text-[#823b18] cursor-pointer"
             >
               <Menu className="w-5 h-5" />
-            </motion.button>
+            </button>
+            
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-[#823b18] flex items-center justify-center">
                 <Coffee className="w-4 h-4 text-white" />
@@ -524,11 +557,15 @@ export default function CustomerLayout({ children }: LayoutProps) {
                 onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
                 className="flex items-center gap-2 p-2 hover:bg-[#823b18]/10 rounded-full transition-all cursor-pointer"
               >
-                <div className="w-8 h-8 rounded-full bg-linear-to-br from-[#823b18] to-[#a0522d] flex items-center justify-center text-white shadow-sm">
-                  <User className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-full bg-linear-to-br from-[#823b18] to-[#a0522d] flex items-center justify-center text-white shadow-sm overflow-hidden">
+                  <img
+                    src={getAvatarUrl()}
+                    alt={displayName}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
                 <span className="hidden md:inline text-sm text-[#54433c]">
-                  {session?.user?.name}
+                  {displayName}
                 </span>
                 <motion.div
                   animate={{ rotate: isProfileDropdownOpen ? 180 : 0 }}
@@ -548,7 +585,7 @@ export default function CustomerLayout({ children }: LayoutProps) {
                     className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-[#dac1b8]/20 overflow-hidden z-50"
                   >
                     <Link
-                      href="/customer/profile"
+                      href="/customer/settings"
                       onClick={() => setIsProfileDropdownOpen(false)}
                       className="flex items-center gap-3 px-4 py-3 text-sm text-[#54433c] hover:bg-[#fff1e9] transition-colors cursor-pointer"
                     >
@@ -573,7 +610,6 @@ export default function CustomerLayout({ children }: LayoutProps) {
         </div>
       </nav>
 
-      {/* Mobile Menu - Dropdown dari atas */}
       <MobileMenuOverlay
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
@@ -582,12 +618,11 @@ export default function CustomerLayout({ children }: LayoutProps) {
 
       {children}
 
-      {/* Modal Konfirmasi Logout */}
       <LogoutModal
         isOpen={showLogoutModal}
         onClose={() => setShowLogoutModal(false)}
         onConfirm={handleLogout}
-        userName={session?.user?.name || ""}
+        userName={displayName}
       />
     </div>
   );

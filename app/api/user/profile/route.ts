@@ -1,3 +1,4 @@
+// app/api/user/profile/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -10,6 +11,9 @@ type UserRow = RowDataPacket & {
   email: string;
   phone: string;
   address: string | null;
+  avatar: string | null;
+  isProfileComplete: number;
+  createdAt: string;
 };
 
 export async function GET() {
@@ -21,7 +25,7 @@ export async function GET() {
 
   try {
     const [rows] = await pool.execute<UserRow[]>(
-      "SELECT id, name, email, phone, address FROM `User` WHERE id = ?",
+      "SELECT id, name, email, phone, address, avatar, isProfileComplete, createdAt FROM `User` WHERE id = ?",
       [session.user.id]
     );
     
@@ -42,9 +46,35 @@ export async function GET() {
       email: user.email,
       phone: phone || "",
       address: user.address || "",
+      avatar: user.avatar || null,
+      isProfileComplete: user.isProfileComplete === 1,
+      createdAt: user.createdAt,
     });
   } catch (error) {
     console.error("Error fetching user profile:", error);
     return NextResponse.json({ error: "Gagal mengambil profil" }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  const session = await getServerSession(authOptions);
+  
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Silakan login terlebih dahulu" }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const { name, phone, address } = body;
+
+    await pool.execute(
+      "UPDATE `User` SET name = ?, phone = ?, address = ? WHERE id = ?",
+      [name, phone || null, address || null, session.user.id]
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error updating user profile:", error);
+    return NextResponse.json({ error: "Gagal memperbarui profil" }, { status: 500 });
   }
 }

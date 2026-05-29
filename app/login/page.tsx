@@ -16,6 +16,7 @@ import {
   Store,
   CheckCircle,
   AlertCircle,
+  Coffee,
 } from "lucide-react";
 
 export default function LoginPage() {
@@ -154,8 +155,8 @@ export default function LoginPage() {
             className="text-center md:text-left"
           >
             <div className="flex items-center justify-center md:justify-start gap-2 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-[#823b18] flex items-center justify-center">
-                <Store className="w-6 h-6 text-white" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#823b18] flex items-center justify-center">
+                <Coffee className="size7 sm:w-6 sm:h-6 text-white" />
               </div>
               <span className="font-serif text-3xl font-bold text-[#823b18]">
                 Ratan Bakery
